@@ -1,0 +1,498 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "logicAppName": {
+            "defaultValue": "Update-IncidentFromSnowCall",
+            "type": "String",
+            "metadata": {
+                "description": "Name of the logic app."
+            }
+        },
+        "location": {
+            "defaultValue": "[resourceGroup().location]",
+            "type": "String",
+            "metadata": {
+                "description": "Location of the logic app."
+            }
+        },
+        "azuresentinel_Connection_Name": {
+            "defaultValue": "azuresentinel",
+            "type": "String",
+            "metadata": {
+                "description": "Azure Sentinel connection"
+            }
+        }
+    },
+    "resources": [
+        {
+            "type": "Microsoft.Web/connections",
+            "apiVersion": "2016-06-01",
+            "name": "[parameters('azuresentinel_Connection_Name')]",
+            "location": "[parameters('location')]",
+            "properties": {
+                "api": {
+                    "id": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Web/locations/', parameters('location'), '/managedApis/', 'azuresentinel')]"
+                },
+                "displayName": "[parameters('azuresentinel_Connection_Name')]"
+            }
+        },
+        {
+            "type": "Microsoft.Logic/workflows",
+            "apiVersion": "2016-06-01",
+            "name": "[parameters('logicAppName')]",
+            "location": "[parameters('location')]",
+            "dependsOn": [
+                "[parameters('azuresentinel_Connection_Name')]"
+            ],
+            "properties": {
+                "state": "Disabled",
+                "definition": {
+                    "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+                    "contentVersion": "1.0.0.0",
+                    "parameters": {
+                        "$connections": {
+                            "defaultValue": {},
+                            "type": "Object"
+                        }
+                    },
+                    "triggers": {
+                        "manual": {
+                            "inputs": {
+                                "schema": {
+                                    "properties": {
+                                        "Comment": {},
+                                        "action": {},
+                                        "incidentId": {},
+                                        "operation": {},
+                                        "owner": {},
+                                        "severity": {},
+                                        "status": {}
+                                    },
+                                    "type": "object"
+                                }
+                            },
+                            "kind": "Http",
+                            "type": "Request"
+                        }
+                    },
+                    "actions": {
+                        "Initialize_status": {
+                            "inputs": {
+                                "variables": [
+                                    {
+                                        "name": "status",
+                                        "type": "string",
+                                        "value": "@{triggerBody()?['status']}"
+                                    }
+                                ]
+                            },
+                            "runAfter": {},
+                            "type": "InitializeVariable"
+                        },
+                        "Initialize_severity": {
+                            "inputs": {
+                                "variables": [
+                                    {
+                                        "name": "severity",
+                                        "type": "string",
+                                        "value": "@{triggerBody()?['severity']}"
+                                    }
+                                ]
+                            },
+                            "runAfter": {
+                                "Initialize_status": [
+                                    "Succeeded"
+                                ]
+                            },
+                            "type": "InitializeVariable"
+                        },
+                        "Initialize_StatusCode": {
+                            "inputs": {
+                                "variables": [
+                                    {
+                                        "name": "statusCode",
+                                        "type": "integer"
+                                    }
+                                ]
+                            },
+                            "runAfter": {
+                                "Initialize_severity": [
+                                    "Succeeded"
+                                ]
+                            },
+                            "type": "InitializeVariable"
+                        },
+                        "Compose_incident_ARM_id": {
+                            "inputs": "/subscriptions/674bca0a-b6ce-4991-9c75-82ef14b0360d/resourceGroups/security/providers/Microsoft.OperationalInsights/workspaces/DemoSecurityLogs/providers/Microsoft.SecurityInsights/Incidents/@{triggerBody()?['incidentId']}",
+                            "runAfter": {
+                                "Initialize_StatusCode": [
+                                    "Succeeded"
+                                ]
+                            },
+                            "type": "Compose"
+                        },
+                        "Compose_ownerAction": {
+                            "inputs": "@if(empty(triggerBody()?['owner']), 'Unassign', 'Assign')",
+                            "runAfter": {
+                                "Compose_incident_ARM_id": [
+                                    "Succeeded"
+                                ]
+                            },
+                            "type": "Compose"
+                        },
+                        "Get_incident": {
+                            "inputs": {
+                                "body": {
+                                    "incidentArmId": "@{outputs('Compose_incident_ARM_id')}"
+                                },
+                                "host": {
+                                    "connection": {
+                                        "name": "@parameters('$connections')['azuresentinel']['connectionId']"
+                                    }
+                                },
+                                "method": "post",
+                                "path": "/Incidents"
+                            },
+                            "runAfter": {
+                                "Compose_ownerAction": [
+                                    "Succeeded"
+                                ]
+                            },
+                            "type": "ApiConnection"
+                        },
+                        "If_operation_is_add_comment": {
+                            "actions": {
+                                "Add_work_note": {
+                                    "inputs": {
+                                        "body": {
+                                            "incidentArmId": "@{outputs('Compose_incident_ARM_id')}",
+                                            "message": "<p>@{triggerBody()?['Comment']}</p>"
+                                        },
+                                        "host": {
+                                            "connection": {
+                                                "name": "@parameters('$connections')['azuresentinel']['connectionId']"
+                                            }
+                                        },
+                                        "method": "post",
+                                        "path": "/Incidents/Comment"
+                                    },
+                                    "runAfter": {},
+                                    "type": "ApiConnection"
+                                }
+                            },
+                            "else": {
+                                "actions": {                                    
+                                    "Set_severity": {
+                                        "cases": {
+                                            "Case_High": {
+                                                "actions": {
+                                                    "Set_severity_High": {
+                                                        "inputs": {
+                                                            "name": "severity",
+                                                            "value": "High"
+                                                        },
+                                                        "runAfter": {},
+                                                        "type": "SetVariable"
+                                                    }
+                                                },
+                                                "case": 1
+                                            },
+                                            "Case_Low": {
+                                                "actions": {
+                                                    "Set_severity_Low": {
+                                                        "inputs": {
+                                                            "name": "severity",
+                                                            "value": "Low"
+                                                        },
+                                                        "runAfter": {},
+                                                        "type": "SetVariable"
+                                                    }
+                                                },
+                                                "case": 3
+                                            },
+                                            "Case_Medium": {
+                                                "actions": {
+                                                    "Set_severity_Medium": {
+                                                        "inputs": {
+                                                            "name": "severity",
+                                                            "value": "Medium"
+                                                        },
+                                                        "runAfter": {},
+                                                        "type": "SetVariable"
+                                                    }
+                                                },
+                                                "case": 2
+                                            }
+                                        },
+                                        "default": {
+                                            "actions": {}
+                                        },
+                                        "expression": "@int(triggerBody()?['severity'])",
+                                        "runAfter": {},
+                                        "type": "Switch"
+                                    },
+                                    "Set_status": {
+                                        "cases": {
+                                            "Close_incident": {
+                                                "actions": {
+                                                    "Set_statusCode_7": {
+                                                        "inputs": {
+                                                            "name": "status",
+                                                            "value": "Closed"
+                                                        },
+                                                        "runAfter": {},
+                                                        "type": "SetVariable"
+                                                    }
+                                                },
+                                                "case": 7
+                                            },
+                                            "InProgress": {
+                                                "actions": {
+                                                    "Set_statusCode_2": {
+                                                        "inputs": {
+                                                            "name": "status",
+                                                            "value": "Active"
+                                                        },
+                                                        "runAfter": {},
+                                                        "type": "SetVariable"
+                                                    }
+                                                },
+                                                "case": 2
+                                            },
+                                            "Open_incident": {
+                                                "actions": {
+                                                    "Set_statusCode_1": {
+                                                        "inputs": {
+                                                            "name": "status",
+                                                            "value": "New"
+                                                        },
+                                                        "runAfter": {},
+                                                        "type": "SetVariable"
+                                                    }
+                                                },
+                                                "case": 1
+                                            },
+                                            "Resolve_incident": {
+                                                "actions": {
+                                                    "Set_status_6": {
+                                                        "inputs": {
+                                                            "name": "status",
+                                                            "value": "Closed"
+                                                        },
+                                                        "runAfter": {},
+                                                        "type": "SetVariable"
+                                                    }
+                                                },
+                                                "case": 6
+                                            }
+                                        },
+                                        "default": {
+                                            "actions": {
+                                                "Set_status_default": {
+                                                    "inputs": {
+                                                        "name": "status",
+                                                        "value": "Active"
+                                                    },
+                                                    "runAfter": {},
+                                                    "type": "SetVariable"
+                                                }
+                                            }
+                                        },
+                                        "expression": "@int(triggerBody()?['status'])",
+                                        "runAfter": {
+                                            "Set_severity": [
+                                                "Succeeded"
+                                            ]
+                                        },
+                                        "type": "Switch"
+                                    },
+                                    "Update_incident_until": {
+                                        "actions": {
+                                            "If_closing_incident": {
+                                                "actions": {
+                                                    "Set_statusCode_true": {
+                                                        "inputs": {
+                                                            "name": "statusCode",
+                                                            "value": "@outputs('Update_incident')['statusCode']"
+                                                        },
+                                                        "runAfter": {
+                                                            "Update_incident": [
+                                                                "Succeeded",
+                                                                "Failed"
+                                                            ]
+                                                        },
+                                                        "type": "SetVariable"
+                                                    },
+                                                    "Update_incident": {
+                                                        "inputs": {
+                                                            "body": {
+                                                                "classification": {
+                                                                    "ClassificationAndReason": "Undetermined"
+                                                                },
+                                                                "incidentArmId": "@{outputs('Compose_incident_ARM_id')}",
+                                                                "owner": "@{triggerBody()?['owner']}",
+                                                                "ownerAction": "@{outputs('Compose_ownerAction')}",
+                                                                "severity": "@variables('severity')",
+                                                                "status": "Closed"
+                                                            },
+                                                            "host": {
+                                                                "connection": {
+                                                                    "name": "@parameters('$connections')['azuresentinel']['connectionId']"
+                                                                }
+                                                            },
+                                                            "method": "put",
+                                                            "path": "/Incidents"
+                                                        },
+                                                        "runAfter": {},
+                                                        "type": "ApiConnection"
+                                                    }
+                                                },
+                                                "else": {
+                                                    "actions": {
+                                                        "Set_statusCode_false": {
+                                                            "inputs": {
+                                                                "name": "statusCode",
+                                                                "value": "@outputs('Update_incident_from_SNOW')['statusCode']"
+                                                            },
+                                                            "runAfter": {
+                                                                "Update_incident_from_SNOW": [
+                                                                    "Succeeded",
+                                                                    "Failed"
+                                                                ]
+                                                            },
+                                                            "type": "SetVariable"
+                                                        },
+                                                        "Update_incident_from_SNOW": {
+                                                            "inputs": {
+                                                                "body": {
+                                                                    "incidentArmId": "@{outputs('Compose_incident_ARM_id')}",
+                                                                    "owner": "@{triggerBody()?['owner']}",
+                                                                    "ownerAction": "@{outputs('Compose_ownerAction')}",
+                                                                    "severity": "@variables('severity')",
+                                                                    "status": "@variables('status')"
+                                                                },
+                                                                "host": {
+                                                                    "connection": {
+                                                                        "name": "@parameters('$connections')['azuresentinel']['connectionId']"
+                                                                    }
+                                                                },
+                                                                "method": "put",
+                                                                "path": "/Incidents"
+                                                            },
+                                                            "runAfter": {},
+                                                            "type": "ApiConnection"
+                                                        }
+                                                    }
+                                                },
+                                                "expression": {
+                                                    "and": [
+                                                        {
+                                                            "equals": [
+                                                                "@triggerBody()?['operation']",
+                                                                "set_status"
+                                                            ]
+                                                        },
+                                                        {
+                                                            "equals": [
+                                                                "@variables('status')",
+                                                                "Closed"
+                                                            ]
+                                                        }
+                                                    ]
+                                                },
+                                                "runAfter": {},
+                                                "type": "If"
+                                            }
+                                        },
+                                        "expression": "@not(equals(variables('statusCode'), 409))",
+                                        "limit": {
+                                            "count": 60,
+                                            "timeout": "PT1H"
+                                        },
+                                        "runAfter": {
+                                            "Set_status": [
+                                                "Succeeded"
+                                            ]
+                                        },
+                                        "type": "Until"
+                                    },
+                                    "Add_SNOW_comment_to_incident": {
+                                        "inputs": {
+                                            "body": {
+                                                "incidentArmId": "@{outputs('Compose_incident_ARM_id')}",
+                                                "message": "<p>@{triggerBody()?['Comment']}</p>"
+                                            },
+                                            "host": {
+                                                "connection": {
+                                                    "name": "@parameters('$connections')['azuresentinel']['connectionId']"
+                                                }
+                                            },
+                                            "method": "post",
+                                            "path": "/Incidents/Comment"
+                                        },
+                                        "runAfter": {
+                                            "Update_incident_until": [
+                                                "Succeeded"
+                                            ]
+                                        },
+                                        "type": "ApiConnection"
+                                    }
+                                }
+                            },
+                            "expression": {
+                                "and": [
+                                    {
+                                        "equals": [
+                                            "@triggerBody()?['operation']",
+                                            "add_comment"
+                                        ]
+                                    }
+                                ]
+                            },
+                            "runAfter": {
+                                "Get_incident": [
+                                    "Succeeded"
+                                ]
+                            },
+                            "type": "If"
+                        },
+                        "Response": {
+                            "inputs": {
+                                "statusCode": 200
+                            },
+                            "kind": "Http",
+                            "runAfter": {
+                                "If_operation_is_add_comment": [
+                                    "Succeeded"
+                                ]
+                            },
+                            "type": "Response"
+                        }
+            
+                    },
+                    "outputs": {}
+                },
+                "parameters": {
+                    "$connections": {
+                        "value": {
+                            "azuresentinel": {
+                                "connectionId": "[resourceId('Microsoft.Web/connections', parameters('azuresentinel_Connection_Name'))]",
+                                "connectionName": "[parameters('azuresentinel_Connection_Name')]",
+                                "id": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Web/locations/', parameters('location'), '/managedApis/', 'azuresentinel')]"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+    ],
+    "outputs": {
+
+        "logicAppUrl": {
+            "type": "string",
+            "value": "[listCallbackURL(concat(resourceId('Microsoft.Logic/workflows/', parameters('logicAppName')), '/triggers/manual'), '2016-06-01').value]"
+        }
+    }
+}
