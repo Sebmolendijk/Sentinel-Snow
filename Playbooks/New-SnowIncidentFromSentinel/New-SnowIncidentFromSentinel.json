@@ -107,6 +107,24 @@
                             "runAfter": {},
                             "type": "InitializeVariable"
                         },
+                        "Initialize_snowIncidentUrl": {
+                            "description": "ServiceNow incidents URL",
+                            "inputs": {
+                                "variables": [
+                                    {
+                                        "name": "snowIncidentUrl",
+                                        "type": "string",
+                                        "value": "https://your_ServiceNow_instance_url"
+                                    }
+                                ]
+                            },
+                            "runAfter": {
+                                "snowCaller": [
+                                    "Succeeded"
+                                ]
+                            },
+                            "type": "InitializeVariable"
+                        },
                         "Alert_-_Get_incident": {
                             "inputs": {
                                 "host": {
@@ -203,6 +221,39 @@
                             },
                             "runAfter": {
                                 "Update_incident": [
+                                    "Succeeded"
+                                ]
+                            },
+                            "type": "ApiConnection"
+                        },
+                        "Compose_incident_url": {
+                            "inputs": {
+                                "name": "snowIncidentUrl",
+                                "value": "@concat('/nav_to.do?uri=%2F', body('Update_Record')?['result']?['sys_class_name'], '.do%3Fsys_id%3D', body('Create_Record')?['result']?['sys_id'])"
+                            },
+                            "runAfter": {
+                                "Update_Record": [
+                                    "Succeeded"
+                                ]
+                            },
+                            "type": "AppendToStringVariable"
+                        },
+                        "Add_incident_URL_in_Sentinel": {
+                            "inputs": {
+                                "body": {
+                                    "incidentArmId": "@body('Update_incident')?['id']",
+                                    "message": "<p><a href=\"@{variables('snowURL')}\" target=_blank>ServiceNow incident direct link</a></p>"
+                                },
+                                "host": {
+                                    "connection": {
+                                        "name": "@parameters('$connections')['azuresentinel']['connectionId']"
+                                    }
+                                },
+                                "method": "post",
+                                "path": "/Incidents/Comment"
+                            },
+                            "runAfter": {
+                                "Compose_incident_url": [
                                     "Succeeded"
                                 ]
                             },
