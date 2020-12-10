@@ -242,7 +242,7 @@
                             "inputs": {
                                 "body": {
                                     "incidentArmId": "@body('Update_incident')?['id']",
-                                    "message": "<p><a href=\"@{variables('snowURL')}\" target=_blank>ServiceNow incident direct link</a></p>"
+                                    "message": "<p><a href=\"@{variables('snowIncidentUrl')}\" target=_blank>ServiceNow incident direct link</a></p>"
                                 },
                                 "host": {
                                     "connection": {
