@@ -119,7 +119,7 @@
                                 ]
                             },
                             "runAfter": {
-                                "snowCaller": [
+                                "Initialize_snowCaller": [
                                     "Succeeded"
                                 ]
                             },
@@ -136,7 +136,7 @@
                                 "path": "/Incidents/subscriptions/@{encodeURIComponent(triggerBody()?['WorkspaceSubscriptionId'])}/resourceGroups/@{encodeURIComponent(triggerBody()?['WorkspaceResourceGroup'])}/workspaces/@{encodeURIComponent(triggerBody()?['WorkspaceId'])}/alerts/@{encodeURIComponent(triggerBody()?['SystemAlertId'])}"
                             },
                             "runAfter": {
-                                "Initialize_snowCaller": [
+                                "Initialize_snowIncidentUrl": [
                                     "Succeeded"
                                 ]
                             },
