@@ -146,12 +146,17 @@
                             "inputs": {
                                 "body": {
                                     "caller_id": "@variables('snowCaller')",
-                                    "comments": "@body('Alert_-_Get_incident')?['properties']?['description']",
                                     "correlation_id": "@body('Alert_-_Get_incident')?['name']",
                                     "description": "@body('Alert_-_Get_incident')?['properties']?['description']",
                                     "incident_state": "@body('Alert_-_Get_incident')?['properties']?['status']",
+                                    "last_sync": "@{formatDateTime(utcNow(), 'yyyy-MM-dd HH:mm:ss')}",
+                                    "product": "@triggerBody()?['ProductName']",
+                                    "resource_group": "@triggerBody()?['WorkspaceResourceGroup']",
+                                    "sentinel_id": "@body('Alert_-_Get_incident')?['name']",
                                     "short_description": "@triggerBody()?['AlertDisplayName']",
-                                    "sys_tags": "@{body('Alert_-_Get_incident')?['properties']?['additionalData']?['alertProductNames']}"
+                                    "subscription_id": "@triggerBody()?['WorkspaceSubscriptionId']",
+                                    "tactics": "@{body('Alert_-_Get_incident')?['properties']?['additionalData']?['tactics']}",
+                                    "workspace_id": "@triggerBody()?['WorkspaceId']"
                                 },
                                 "host": {
                                     "connection": {
@@ -159,7 +164,7 @@
                                     }
                                 },
                                 "method": "post",
-                                "path": "/api/now/v2/table/@{encodeURIComponent('incident')}",
+                                "path": "/api/now/v2/table/@{encodeURIComponent('x_556309_azsentine_azsentinel_incidents')}",
                                 "queries": {
                                     "sysparm_display_value": true,
                                     "sysparm_exclude_reference_link": true
@@ -213,7 +218,7 @@
                                     }
                                 },
                                 "method": "put",
-                                "path": "/api/now/v2/table/@{encodeURIComponent('incident')}/@{encodeURIComponent(body('Create_Record')?['result']?['sys_id'])}",
+                                "path": "/api/now/v2/table/@{encodeURIComponent('x_556309_azsentine_azsentinel_incidents')}/@{encodeURIComponent(body('Create_Record')?['result']?['sys_id'])}",
                                 "queries": {
                                     "sysparm_display_value": false,
                                     "sysparm_exclude_reference_link": true
